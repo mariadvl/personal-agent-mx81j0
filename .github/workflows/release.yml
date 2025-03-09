@@ -1,0 +1,452 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (semver format)'
+        required: true
+        type: string
+      release_type:
+        description: 'Release type'
+        required: true
+        type: choice
+        options: [alpha, beta, production]
+        default: 'alpha'
+      skip_tests:
+        description: 'Skip tests'
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+  PNPM_VERSION: '8.6.0'
+  ELECTRON_VERSION: '27.0.0'
+  RELEASE_TYPE: ${{ github.event.inputs.release_type || 'production' }}
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
+
+jobs:
+  validate-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate version format
+        run: echo "$VERSION" | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.]+)?$' || (echo "Invalid version format. Must be in semver format (e.g., 1.0.0 or v1.0.0)" && exit 1)
+      
+      - name: Normalize version
+        id: normalize
+        run: echo "normalized_version=$(echo "$VERSION" | sed 's/^v//')" >> $GITHUB_OUTPUT
+      
+      - name: Set version in environment
+        run: echo "VERSION=${{ steps.normalize.outputs.normalized_version }}" >> $GITHUB_ENV
+
+  run-tests:
+    needs: [validate-version]
+    if: "!github.event.inputs.skip_tests"
+    uses: ./.github/workflows/test.yml
+
+  fetch-artifacts:
+    needs: [validate-version]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      
+      - name: Build artifacts
+        uses: ./.github/workflows/build.yml
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+      
+      - name: List artifacts
+        run: find artifacts -type f | sort
+      
+      - name: Upload artifacts for release
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-artifacts
+          path: artifacts
+
+  sign-artifacts:
+    needs: [fetch-artifacts]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: release-artifacts
+          path: artifacts
+      
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v5
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      
+      - name: Sign Windows artifacts
+        run: find artifacts/electron-windows -type f -name "*.exe" -exec gpg --batch --yes --detach-sign {} \;
+      
+      - name: Sign macOS artifacts
+        run: find artifacts/electron-macos -type f -name "*.dmg" -exec gpg --batch --yes --detach-sign {} \;
+      
+      - name: Sign Linux artifacts
+        run: find artifacts/electron-linux -type f -name "*.deb" -exec gpg --batch --yes --detach-sign {} \;
+      
+      - name: Sign Android artifacts
+        run: find artifacts/android-app -type f -name "*.apk" -exec gpg --batch --yes --detach-sign {} \;
+      
+      - name: Sign iOS artifacts
+        run: find artifacts/ios-app -type f -name "*.ipa" -exec gpg --batch --yes --detach-sign {} \;
+      
+      - name: Upload signed artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: signed-artifacts
+          path: artifacts
+
+  deploy-alpha:
+    needs: [sign-artifacts]
+    if: "env.RELEASE_TYPE == 'alpha' || env.RELEASE_TYPE == 'beta' || env.RELEASE_TYPE == 'production'"
+    runs-on: ubuntu-latest
+    environment: alpha
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: signed-artifacts
+          path: artifacts
+      
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      - name: Deploy to alpha environment
+        run: aws s3 sync artifacts s3://${{ secrets.ALPHA_BUCKET }}/releases/${{ env.VERSION }}/ --acl public-read
+      
+      - name: Update latest alpha version
+        run: echo "$VERSION" > latest-alpha.txt && aws s3 cp latest-alpha.txt s3://${{ secrets.ALPHA_BUCKET }}/latest-alpha.txt --acl public-read
+      
+      - name: Notify alpha testers
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issueBody = `Alpha release ${process.env.VERSION} is now available for testing.
+
+            Download links:
+            - Windows: https://${process.env.ALPHA_BUCKET}.s3.amazonaws.com/releases/${process.env.VERSION}/electron-windows/PersonalAIAgent-Setup-${process.env.VERSION}.exe
+            - macOS: https://${process.env.ALPHA_BUCKET}.s3.amazonaws.com/releases/${process.env.VERSION}/electron-macos/PersonalAIAgent-${process.env.VERSION}.dmg
+            - Linux: https://${process.env.ALPHA_BUCKET}.s3.amazonaws.com/releases/${process.env.VERSION}/electron-linux/personal-ai-agent_${process.env.VERSION}_amd64.deb
+
+            Please report any issues you encounter.`;
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Alpha Release ${process.env.VERSION} Available`,
+              body: issueBody,
+              labels: ['alpha', 'release']
+            });
+
+  deploy-beta:
+    needs: [deploy-alpha]
+    if: "env.RELEASE_TYPE == 'beta' || env.RELEASE_TYPE == 'production'"
+    runs-on: ubuntu-latest
+    environment: beta
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: signed-artifacts
+          path: artifacts
+      
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      - name: Deploy to beta environment
+        run: aws s3 sync artifacts s3://${{ secrets.BETA_BUCKET }}/releases/${{ env.VERSION }}/ --acl public-read
+      
+      - name: Update latest beta version
+        run: echo "$VERSION" > latest-beta.txt && aws s3 cp latest-beta.txt s3://${{ secrets.BETA_BUCKET }}/latest-beta.txt --acl public-read
+      
+      - name: Configure Electron updater
+        run: echo '{"version": "${{ env.VERSION }}", "notes": "Beta release ${{ env.VERSION }}", "pub_date": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'", "files": [{"url": "https://${{ secrets.BETA_BUCKET }}.s3.amazonaws.com/releases/${{ env.VERSION }}/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe", "sha512": "'$(shasum -a 512 artifacts/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe | awk "{print \\$1}")'"},{"url": "https://${{ secrets.BETA_BUCKET }}.s3.amazonaws.com/releases/${{ env.VERSION }}/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg", "sha512": "'$(shasum -a 512 artifacts/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg | awk "{print \\$1}")'"},{"url": "https://${{ secrets.BETA_BUCKET }}.s3.amazonaws.com/releases/${{ env.VERSION }}/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb", "sha512": "'$(shasum -a 512 artifacts/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb | awk "{print \\$1}")'"]}' > beta-latest.json && aws s3 cp beta-latest.json s3://${{ secrets.BETA_BUCKET }}/beta-latest.json --acl public-read
+      
+      - name: Notify beta testers
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issueBody = `Beta release ${process.env.VERSION} is now available for testing.
+
+            Download links:
+            - Windows: https://${process.env.BETA_BUCKET}.s3.amazonaws.com/releases/${process.env.VERSION}/electron-windows/PersonalAIAgent-Setup-${process.env.VERSION}.exe
+            - macOS: https://${process.env.BETA_BUCKET}.s3.amazonaws.com/releases/${process.env.VERSION}/electron-macos/PersonalAIAgent-${process.env.VERSION}.dmg
+            - Linux: https://${process.env.BETA_BUCKET}.s3.amazonaws.com/releases/${process.env.VERSION}/electron-linux/personal-ai-agent_${process.env.VERSION}_amd64.deb
+
+            Existing installations will be automatically updated.
+
+            Please report any issues you encounter.`;
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Beta Release ${process.env.VERSION} Available`,
+              body: issueBody,
+              labels: ['beta', 'release']
+            });
+
+  deploy-production:
+    needs: [deploy-beta]
+    if: "env.RELEASE_TYPE == 'production'"
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: signed-artifacts
+          path: artifacts
+      
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      - name: Deploy to production environment
+        run: aws s3 sync artifacts s3://${{ secrets.PRODUCTION_BUCKET }}/releases/${{ env.VERSION }}/ --acl public-read
+      
+      - name: Update latest production version
+        run: echo "$VERSION" > latest.txt && aws s3 cp latest.txt s3://${{ secrets.PRODUCTION_BUCKET }}/latest.txt --acl public-read
+      
+      - name: Configure Electron updater
+        run: echo '{"version": "${{ env.VERSION }}", "notes": "Release ${{ env.VERSION }}", "pub_date": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'", "files": [{"url": "https://${{ secrets.PRODUCTION_BUCKET }}.s3.amazonaws.com/releases/${{ env.VERSION }}/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe", "sha512": "'$(shasum -a 512 artifacts/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe | awk "{print \\$1}")'"},{"url": "https://${{ secrets.PRODUCTION_BUCKET }}.s3.amazonaws.com/releases/${{ env.VERSION }}/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg", "sha512": "'$(shasum -a 512 artifacts/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg | awk "{print \\$1}")'"},{"url": "https://${{ secrets.PRODUCTION_BUCKET }}.s3.amazonaws.com/releases/${{ env.VERSION }}/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb", "sha512": "'$(shasum -a 512 artifacts/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb | awk "{print \\$1}")'"]}' > latest.json && aws s3 cp latest.json s3://${{ secrets.PRODUCTION_BUCKET }}/latest.json --acl public-read
+      
+      - name: Submit to app stores
+        run: echo "Submitting to app stores..."
+
+  create-github-release:
+    needs: [deploy-production]
+    if: "env.RELEASE_TYPE == 'production'"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: signed-artifacts
+          path: artifacts
+      
+      - name: Generate changelog
+        id: changelog
+        run: echo "changelog=$(git log --pretty=format:'- %s' $(git describe --tags --abbrev=0 HEAD^)..HEAD)" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Personal AI Agent v${{ env.VERSION }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe
+            artifacts/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe.sig
+            artifacts/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg
+            artifacts/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg.sig
+            artifacts/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb
+            artifacts/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb.sig
+            artifacts/android-app/*.apk
+            artifacts/android-app/*.apk.sig
+      
+      - name: Update documentation
+        run: echo "Updating documentation with new version..."
+      
+      - name: Announce release
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const releaseBody = `# Personal AI Agent v${process.env.VERSION} Released
+
+            We're excited to announce the release of Personal AI Agent v${process.env.VERSION}!
+
+            ## What's New
+            ${process.env.CHANGELOG}
+
+            ## Download
+            - [Windows](https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/v${process.env.VERSION}/PersonalAIAgent-Setup-${process.env.VERSION}.exe)
+            - [macOS](https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/v${process.env.VERSION}/PersonalAIAgent-${process.env.VERSION}.dmg)
+            - [Linux](https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/v${process.env.VERSION}/personal-ai-agent_${process.env.VERSION}_amd64.deb)
+            - [Android](https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/v${process.env.VERSION}/PersonalAIAgent-${process.env.VERSION}.apk)
+
+            Existing installations will be automatically updated.
+
+            Thank you for using Personal AI Agent!`;
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Personal AI Agent v${process.env.VERSION} Released`,
+              body: releaseBody,
+              labels: ['release', 'announcement']
+            });
+
+  create-beta-release:
+    needs: [deploy-beta]
+    if: "env.RELEASE_TYPE == 'beta' && needs.deploy-production.result != 'success'"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: signed-artifacts
+          path: artifacts
+      
+      - name: Generate changelog
+        id: changelog
+        run: echo "changelog=$(git log --pretty=format:'- %s' $(git describe --tags --abbrev=0 HEAD^)..HEAD)" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}-beta
+          name: Personal AI Agent v${{ env.VERSION }} Beta
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: true
+          files: |
+            artifacts/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe
+            artifacts/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe.sig
+            artifacts/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg
+            artifacts/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg.sig
+            artifacts/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb
+            artifacts/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb.sig
+            artifacts/android-app/*.apk
+            artifacts/android-app/*.apk.sig
+
+  create-alpha-release:
+    needs: [deploy-alpha]
+    if: "env.RELEASE_TYPE == 'alpha' && needs.deploy-beta.result != 'success' && needs.deploy-production.result != 'success'"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: signed-artifacts
+          path: artifacts
+      
+      - name: Generate changelog
+        id: changelog
+        run: echo "changelog=$(git log --pretty=format:'- %s' $(git describe --tags --abbrev=0 HEAD^)..HEAD)" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}-alpha
+          name: Personal AI Agent v${{ env.VERSION }} Alpha
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: true
+          files: |
+            artifacts/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe
+            artifacts/electron-windows/PersonalAIAgent-Setup-${{ env.VERSION }}.exe.sig
+            artifacts/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg
+            artifacts/electron-macos/PersonalAIAgent-${{ env.VERSION }}.dmg.sig
+            artifacts/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb
+            artifacts/electron-linux/personal-ai-agent_${{ env.VERSION }}_amd64.deb.sig
+            artifacts/android-app/*.apk
+            artifacts/android-app/*.apk.sig
+
+  release-summary:
+    needs: [deploy-alpha, deploy-beta, deploy-production, create-github-release, create-beta-release, create-alpha-release]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate release summary
+        run: |
+          echo '# Release Summary' > release-summary.md
+          echo '' >> release-summary.md
+          echo '## Version' >> release-summary.md
+          echo '- Version: ${{ env.VERSION }}' >> release-summary.md
+          echo '- Release Type: ${{ env.RELEASE_TYPE }}' >> release-summary.md
+          echo '' >> release-summary.md
+          echo '## Deployment Status' >> release-summary.md
+          echo '- Alpha: ${{ needs.deploy-alpha.result == "success" && "✅ Success" || needs.deploy-alpha.result == "skipped" && "⏭️ Skipped" || "❌ Failed" }}' >> release-summary.md
+          echo '- Beta: ${{ needs.deploy-beta.result == "success" && "✅ Success" || needs.deploy-beta.result == "skipped" && "⏭️ Skipped" || "❌ Failed" }}' >> release-summary.md
+          echo '- Production: ${{ needs.deploy-production.result == "success" && "✅ Success" || needs.deploy-production.result == "skipped" && "⏭️ Skipped" || "❌ Failed" }}' >> release-summary.md
+          echo '' >> release-summary.md
+          echo '## GitHub Release' >> release-summary.md
+          echo '- Production Release: ${{ needs.create-github-release.result == "success" && "✅ Success" || needs.create-github-release.result == "skipped" && "⏭️ Skipped" || "❌ Failed" }}' >> release-summary.md
+          echo '- Beta Release: ${{ needs.create-beta-release.result == "success" && "✅ Success" || needs.create-beta-release.result == "skipped" && "⏭️ Skipped" || "❌ Failed" }}' >> release-summary.md
+          echo '- Alpha Release: ${{ needs.create-alpha-release.result == "success" && "✅ Success" || needs.create-alpha-release.result == "skipped" && "⏭️ Skipped" || "❌ Failed" }}' >> release-summary.md
+      
+      - name: Upload release summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-summary
+          path: release-summary.md
+      
+      - name: Post summary comment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('release-summary.md', 'utf8');
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release Summary: v${process.env.VERSION} (${process.env.RELEASE_TYPE})`,
+              body: summary,
+              labels: ['release', 'summary']
+            });
