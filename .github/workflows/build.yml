@@ -1,0 +1,412 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+  PNPM_VERSION: '8.6.0'
+  ELECTRON_VERSION: '27.0.0'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      
+      - name: Install backend dependencies
+        run: cd src/backend && poetry install
+      
+      - name: Install frontend dependencies
+        run: cd src/web && pnpm install
+      
+      - name: Lint Python code
+        run: cd src/backend && poetry run flake8 && poetry run black --check . && poetry run isort --check .
+      
+      - name: Lint TypeScript code
+        run: cd src/web && pnpm lint
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      
+      - name: Install backend dependencies
+        run: cd src/backend && poetry install
+      
+      - name: Install frontend dependencies
+        run: cd src/web && pnpm install
+      
+      - name: Run mypy
+        run: cd src/backend && poetry run mypy .
+      
+      - name: Run bandit
+        run: cd src/backend && poetry run bandit -r .
+      
+      - name: Run TypeScript type checking
+        run: cd src/web && pnpm tsc --noEmit
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: 'true'
+      
+      - name: Check for secrets
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          path: .
+          config-path: .github/gitleaks.toml
+
+  build-backend:
+    runs-on: ubuntu-latest
+    needs: [static-analysis, security-scan]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install Poetry
+        run: curl -sSL https://install.python-poetry.org | python3 -
+      
+      - name: Install dependencies
+        run: cd src/backend && poetry install
+      
+      - name: Build backend package
+        run: cd src/backend && poetry build
+      
+      - name: Build Docker image
+        run: cd src/backend && docker build -t personal-ai-agent-backend:latest .
+      
+      - name: Upload backend artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: backend-dist
+          path: src/backend/dist/
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    needs: [static-analysis, security-scan]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      
+      - name: Install dependencies
+        run: cd src/web && pnpm install
+      
+      - name: Build web application
+        run: cd src/web && pnpm build
+      
+      - name: Upload web artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: web-dist
+          path: src/web/.next/
+
+  build-electron-windows:
+    runs-on: windows-latest
+    needs: [build-backend, build-frontend]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: backend-dist
+          path: src/backend/dist
+      
+      - name: Download web artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: web-dist
+          path: src/web/.next
+      
+      - name: Install dependencies
+        run: cd src/web && pnpm install && cd electron && pnpm install
+      
+      - name: Build Electron app for Windows
+        run: cd src/web && pnpm electron:build
+      
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: electron-windows
+          path: src/web/electron/out/make/squirrel.windows/x64/*
+
+  build-electron-macos:
+    runs-on: macos-latest
+    needs: [build-backend, build-frontend]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: backend-dist
+          path: src/backend/dist
+      
+      - name: Download web artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: web-dist
+          path: src/web/.next
+      
+      - name: Install dependencies
+        run: cd src/web && pnpm install && cd electron && pnpm install
+      
+      - name: Build Electron app for macOS
+        run: cd src/web && pnpm electron:build
+      
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: electron-macos
+          path: src/web/electron/out/make/*.dmg
+
+  build-electron-linux:
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: backend-dist
+          path: src/backend/dist
+      
+      - name: Download web artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: web-dist
+          path: src/web/.next
+      
+      - name: Install dependencies
+        run: cd src/web && pnpm install && cd electron && pnpm install
+      
+      - name: Build Electron app for Linux
+        run: cd src/web && pnpm electron:build
+      
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: electron-linux
+          path: src/web/electron/out/make/deb/x64/*
+
+  build-mobile-android:
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+      
+      - name: Install dependencies
+        run: cd src/web/react-native && npm install
+      
+      - name: Build Android app
+        run: cd src/web/react-native && npm run build:android
+      
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-app
+          path: src/web/react-native/android/app/build/outputs/apk/release/*.apk
+
+  build-mobile-ios:
+    runs-on: macos-latest
+    needs: [build-backend, build-frontend]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install dependencies
+        run: cd src/web/react-native && npm install
+      
+      - name: Install CocoaPods
+        run: cd src/web/react-native/ios && pod install
+      
+      - name: Build iOS app
+        run: cd src/web/react-native && npm run build:ios
+      
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ios-app
+          path: src/web/react-native/ios/build/Build/Products/Release-iphoneos/*.ipa
+
+  build-summary:
+    runs-on: ubuntu-latest
+    needs: [build-electron-windows, build-electron-macos, build-electron-linux, build-mobile-android, build-mobile-ios]
+    if: always()
+    steps:
+      - name: Generate build summary
+        run: |
+          echo '# Build Summary' > build-summary.md
+          echo '' >> build-summary.md
+          echo '## Desktop Applications' >> build-summary.md
+          echo '- Windows: ${{ needs.build-electron-windows.result == "success" && "✅ Success" || "❌ Failed" }}' >> build-summary.md
+          echo '- macOS: ${{ needs.build-electron-macos.result == "success" && "✅ Success" || "❌ Failed" }}' >> build-summary.md
+          echo '- Linux: ${{ needs.build-electron-linux.result == "success" && "✅ Success" || "❌ Failed" }}' >> build-summary.md
+          echo '' >> build-summary.md
+          echo '## Mobile Applications' >> build-summary.md
+          echo '- Android: ${{ needs.build-mobile-android.result == "success" && "✅ Success" || needs.build-mobile-android.result == "skipped" && "⏭️ Skipped" || "❌ Failed" }}' >> build-summary.md
+          echo '- iOS: ${{ needs.build-mobile-ios.result == "success" && "✅ Success" || needs.build-mobile-ios.result == "skipped" && "⏭️ Skipped" || "❌ Failed" }}' >> build-summary.md
+          echo '' >> build-summary.md
+          echo 'Build artifacts are available as workflow artifacts.' >> build-summary.md
+      
+      - name: Upload build summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-summary
+          path: build-summary.md
+      
+      - name: Post summary comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('build-summary.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
