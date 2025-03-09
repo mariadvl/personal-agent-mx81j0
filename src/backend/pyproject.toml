@@ -1,0 +1,77 @@
+[build-system]
+requires = ["poetry-core>=1.6.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "personal-ai-agent-backend"
+version = "0.1.0"
+description = "Backend for a local-first, memory-augmented AI companion"
+authors = ["Personal AI Team <info@personalai.example>"]
+readme = "README.md"
+packages = [{include = "backend"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.104.0"
+uvicorn = "^0.23.2"
+langchain = "^0.0.335"
+openai = "^1.3.0"
+chromadb = "^0.4.18"
+torch = "^2.1.0"
+pydantic = "^2.4.2"
+sqlalchemy = "^2.0.23"
+pymupdf = "^1.23.0"
+python-docx = "^1.0.0"
+pandas = "^2.1.1"
+beautifulsoup4 = "^4.12.0"
+requests = "^2.31.0"
+python-multipart = "^0.0.6"
+python-dotenv = "^1.0.0"
+httpx = "^0.25.0"
+tiktoken = "^0.5.1"
+elevenlabs = "^0.2.26"
+cryptography = "^41.0.4"
+serpapi = "^0.1.0"
+llama-cpp-python = "^0.2.19"
+websockets = "^12.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+pytest-asyncio = "^0.21.1"
+black = "^23.10.0"
+isort = "^5.12.0"
+mypy = "^1.6.1"
+flake8 = "^6.1.0"
+pre-commit = "^3.5.0"
+pyfakefs = "^5.3.0"
+freezegun = "^1.2.2"
+pytest-benchmark = "^4.0.0"
+pytest-mock = "^3.12.0"
+httpx = {extras = ["cli"], version = "^0.25.0"}
+types-requests = "^2.31.0.1"
+types-beautifulsoup4 = "^4.12.0.1"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = "\\.(py)$"
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[tool.poetry.scripts]
+start = "backend.main:start"
