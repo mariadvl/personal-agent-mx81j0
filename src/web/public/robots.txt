@@ -1,0 +1,23 @@
+# This file instructs web crawlers which parts of the site they can access
+
+User-agent: *
+Disallow: /api/
+Disallow: /chat/
+Disallow: /files/
+Disallow: /memory/
+Disallow: /settings/
+Disallow: /web/
+
+# Allow access to public documentation only
+Allow: /docs/
+
+# Disallow all bots from any private data paths
+Disallow: /api/conversation
+Disallow: /api/memory
+Disallow: /api/document
+Disallow: /api/web
+Disallow: /api/search
+Disallow: /api/voice
+Disallow: /api/settings
+
+# Sitemap not provided as this is primarily a local-first application
