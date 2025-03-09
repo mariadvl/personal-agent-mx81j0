@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  api:
+    image: personal-ai-backend:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app # Mount source code for development
+      - ./data:/app/data # Persistent storage for application data
+      - ./config:/app/config # Persistent storage for configuration files
+      - ./logs:/app/logs # Persistent storage for log files
+    ports:
+      - "8000:8000" # FastAPI server port
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1 # Prevents Python from writing .pyc files
+      - PYTHONUNBUFFERED=1 # Ensures Python output is sent straight to terminal without buffering
+      - CONFIG_DIR=/app/config # Sets the configuration directory for the application
+      - DATA_DIR=/app/data # Sets the data directory for local storage
+      - LOG_DIR=/app/logs # Sets the directory for log files
+      - CHROMA_HOST=chroma # Sets the hostname for the ChromaDB service
+      - CHROMA_PORT=8000 # Sets the port for the ChromaDB service
+    depends_on:
+      - chroma
+    command: python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: curl --fail http://localhost:8000/api/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  chroma:
+    image: chromadb/chroma:0.4.18 # Vector database for similarity search
+    volumes:
+      - ./data/chroma:/chroma/chroma # Persistent storage for vector database
+    ports:
+      - "8001:8000" # ChromaDB API port
+    environment:
+      - ALLOW_RESET=true # Allows resetting the database for development
+      - ANONYMIZED_TELEMETRY=false # Disables telemetry for privacy
+    healthcheck:
+      test: curl --fail http://localhost:8000/api/v1/heartbeat || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  test-runner:
+    image: personal-ai-backend:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app # Mount source code for testing
+      - ./data:/app/data # Persistent storage for test data
+      - ./config:/app/config # Persistent storage for test configuration
+      - ./logs:/app/logs # Persistent storage for test logs
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1 # Prevents Python from writing .pyc files
+      - PYTHONUNBUFFERED=1 # Ensures Python output is sent straight to terminal without buffering
+      - CONFIG_DIR=/app/config # Sets the configuration directory for tests
+      - DATA_DIR=/app/data # Sets the data directory for test data
+      - LOG_DIR=/app/logs # Sets the directory for test logs
+      - CHROMA_HOST=chroma # Sets the hostname for the ChromaDB service
+      - CHROMA_PORT=8000 # Sets the port for the ChromaDB service
+      - TESTING=true # Indicates that the application is running in test mode
+    depends_on:
+      - chroma
+    command: pytest -xvs
+    profiles: ["test"]
+
+volumes:
+  data: # Persistent volume for application data
+  chroma-data: # Persistent volume for vector database
+
+networks:
+  personal-ai-network: # Internal network for service communication
