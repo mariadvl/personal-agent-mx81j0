@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ../../src/backend
+      dockerfile: ./Dockerfile.backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=INFO
+      - PORT=8000
+      - CONFIG_DIR=/app/config
+      - DATA_DIR=/app/data
+      - LOG_DIR=/app/logs
+      - VECTOR_DB_PATH=/app/data/vector_db
+      - SQLITE_DB_PATH=/app/data/sqlite.db
+      - API_HOST=0.0.0.0
+      - API_WORKERS=4
+    volumes:
+      - backend_data:/app/data # Persistent storage for application data
+      - backend_config:/app/config # Persistent storage for configuration files
+      - backend_logs:/app/logs # Persistent storage for log files
+    ports:
+      - "8000:8000" # FastAPI server port
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/api/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on: []
+    resource_limits:
+      cpus: '1.0'
+      memory: 1G
+    networks:
+      - personal_ai_network
+
+  frontend:
+    build:
+      context: ../../src/web
+      dockerfile: ./Dockerfile.web
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXT_PUBLIC_API_BASE_URL=http://backend:8000
+      - NEXT_PUBLIC_ENABLE_CLOUD_FEATURES=false
+      - NEXT_PUBLIC_DEV_MODE=false
+      - NEXT_PUBLIC_ENABLE_ANALYTICS=false
+    ports:
+      - "3000:3000" # Next.js server port
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000/api/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - service: backend
+        condition: service_healthy
+    resource_limits:
+      cpus: '0.5'
+      memory: 512M
+    networks:
+      - personal_ai_network
+
+volumes:
+  backend_data:
+    driver: local
+    # Persistent storage for application data including vector and SQLite databases
+  backend_config:
+    driver: local
+    # Persistent storage for configuration files
+  backend_logs:
+    driver: local
+    # Persistent storage for log files
+
+networks:
+  personal_ai_network:
+    driver: bridge
+    # Isolated network for Personal AI Agent services
