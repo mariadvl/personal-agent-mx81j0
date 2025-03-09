@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/username/personal-ai-agent/blob/main/docs/README.md
+    about: Please check our documentation before creating an issue
+  - name: Security Policy
+    url: https://github.com/username/personal-ai-agent/blob/main/SECURITY.md
+    about: Please report security vulnerabilities according to our security policy
+  - name: Community Discussions
+    url: https://github.com/username/personal-ai-agent/discussions
+    about: Ask questions and discuss with other community members
