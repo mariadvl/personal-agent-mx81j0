@@ -1,0 +1,213 @@
+# =========================================================================
+# Personal AI Agent - Default Configuration
+# =========================================================================
+# This configuration file contains default settings for the Personal AI Agent.
+# All settings prioritize privacy, security, and local-first operation.
+# This file is loaded during application startup and can be overridden by user settings.
+# =========================================================================
+
+# General application settings
+general:
+  app_name: "Personal AI Agent"
+  version: "1.0.0"
+  language: "en"                  # Default language (currently only English supported)
+  debug_mode: false               # Enable debug mode for additional logging
+  log_level: "INFO"               # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  data_dir: "data"                # Base directory for all application data
+
+# API server settings (for local backend)
+api:
+  host: "127.0.0.1"               # Localhost only - for security
+  port: 8000                      # Default port for backend API
+  workers: 1                      # Number of worker processes
+  timeout: 60                     # Request timeout in seconds
+  cors_origins:                   # Allowed CORS origins
+    - "http://localhost:3000"
+  rate_limit:
+    enabled: true                 # Enable rate limiting for API endpoints
+    limit: 100                    # Maximum requests
+    timeframe: 60                 # Per timeframe (seconds)
+
+# Privacy settings (defaults prioritize privacy)
+privacy:
+  local_storage_only: true        # Store all data locally by default
+  analytics_enabled: false        # No telemetry data collection by default
+  error_reporting: false          # No error reporting by default
+  data_collection: false          # No user data collection by default
+  session_timeout: 30             # Session timeout in minutes
+
+# Voice interface settings
+voice:
+  enabled: false                  # Voice interface disabled by default
+  input_enabled: false            # Voice input disabled by default
+  output_enabled: false           # Voice output disabled by default
+  voice_id: "default"             # Default voice identifier
+  provider: "system"              # Default voice provider (system)
+  
+  # ElevenLabs voice settings (when enabled)
+  elevenlabs:
+    enabled: false                # ElevenLabs integration disabled by default
+    api_key: ""                   # ElevenLabs API key (to be provided by user)
+    voice_id: "default"           # ElevenLabs voice ID
+    model_id: "eleven_monolingual_v1" # ElevenLabs model ID
+    
+  # Whisper speech-to-text settings
+  whisper:
+    enabled: false                # Whisper STT disabled by default
+    model: "base"                 # Whisper model size
+    use_local: true               # Use local Whisper model by default
+    language: "en"                # Default language for speech recognition
+
+# AI personality settings
+personality:
+  name: "Assistant"               # Default name for the AI
+  style: "helpful"                # Conversation style (helpful, professional, friendly)
+  formality: "neutral"            # Formality level (formal, neutral, casual)
+  verbosity: "balanced"           # Response verbosity (concise, balanced, detailed)
+  empathy: "medium"               # Empathy level (low, medium, high)
+  humor: "light"                  # Humor level (none, light, moderate)
+  creativity: "balanced"          # Creativity level (practical, balanced, creative)
+
+# Language model settings
+llm:
+  provider: "openai"              # Default LLM provider
+  model: "gpt-4o"                 # Default model
+  temperature: 0.7                # Response randomness (0.0-1.0)
+  max_tokens: 1000                # Maximum tokens per response
+  top_p: 1.0                      # Nucleus sampling parameter
+  frequency_penalty: 0.0          # Repetition reduction (0.0-2.0)
+  presence_penalty: 0.0           # Topic repetition reduction (0.0-2.0)
+  use_local_llm: false            # Use local LLM (if available)
+  local_model_path: ""            # Path to local model (if used)
+  fallback_to_local: true         # Fallback to local model if cloud unavailable
+  
+  # OpenAI-specific settings
+  openai:
+    api_key: ""                   # OpenAI API key (to be provided by user)
+    organization: ""              # OpenAI organization ID (optional)
+    base_url: "https://api.openai.com/v1" # API base URL
+    embedding_model: "text-embedding-3-small" # Embedding model
+  
+  # Local LLM settings
+  local:
+    model_path: ""                # Path to local LLM model
+    model_type: "llama"           # Model type (llama, mistral, etc.)
+    context_size: 4096            # Context window size
+    threads: 4                    # Number of threads for inference
+    embedding_model_path: ""      # Path to local embedding model
+
+# Memory management settings
+memory:
+  vector_db_path: "memory/vectors" # Vector database location
+  sqlite_db_path: "memory/metadata.db" # SQLite database location
+  max_memory_items: 10000         # Maximum number of memory items
+  context_window_size: 10         # Number of memories to include in context
+  search_limit: 50                # Maximum search results
+  importance_weight: 0.1          # Memory importance weight factor
+  recency_weight: 0.25            # Memory recency weight factor
+  similarity_weight: 0.65         # Memory similarity weight factor
+  
+  # Memory backup settings
+  backup:
+    enabled: true                 # Enable local memory backups
+    auto_backup: true             # Automatic backup schedule
+    backup_frequency: "daily"     # Backup frequency (hourly, daily, weekly)
+    backup_count: 7               # Number of backups to keep
+    backup_path: "backups"        # Path for backup storage
+  
+  # Memory optimization settings
+  optimization:
+    auto_optimize: true           # Automatic database optimization
+    optimization_frequency: "weekly" # Optimization frequency
+
+# Storage settings
+storage:
+  base_path: "data"               # Base storage path
+  file_storage_path: "data/files" # Document storage path
+  max_file_size_mb: 50            # Maximum file size in MB
+  allowed_file_types:             # Allowed file types for upload
+    - "pdf"
+    - "txt"
+    - "docx"
+    - "md"
+    - "csv"
+    - "json"
+  backup_enabled: false           # Enable automatic backups
+  backup_frequency: "weekly"      # Backup frequency
+  backup_count: 5                 # Number of backups to keep
+  
+  # Cloud backup settings (disabled by default)
+  cloud_backup:
+    enabled: false                # Cloud backup disabled by default
+    provider: "s3"                # S3-compatible storage provider
+    bucket: ""                    # Storage bucket name
+    region: ""                    # Storage region
+    access_key: ""                # Access key (to be provided by user)
+    secret_key: ""                # Secret key (to be provided by user)
+    endpoint: ""                  # Custom endpoint URL (for non-AWS S3)
+    encryption_key: ""            # Client-side encryption key
+
+# Web search settings
+search:
+  enabled: true                   # Enable web search capability
+  provider: "duckduckgo"          # Default search provider
+  max_results: 5                  # Maximum results per search
+  safe_search: true               # Enable safe search filtering
+  
+  # SerpAPI settings (if used)
+  serpapi:
+    enabled: false                # SerpAPI disabled by default
+    api_key: ""                   # SerpAPI key (to be provided by user)
+  
+  # DuckDuckGo settings
+  duckduckgo:
+    enabled: true                 # DuckDuckGo enabled by default (no API key needed)
+    region: "wt-wt"               # No region filter by default
+    time_period: "y"              # Time period for results (y = past year)
+
+# Document processing settings
+document:
+  chunk_size: 1000                # Document chunk size (in tokens)
+  chunk_overlap: 100              # Overlap between chunks (in tokens)
+  summarize: true                 # Generate document summaries
+  extract_metadata: true          # Extract document metadata
+  ocr_enabled: false              # OCR for images in documents (disabled by default)
+  max_pages: 100                  # Maximum pages to process per document
+
+# Web content extraction settings
+web:
+  user_agent: "Personal AI Agent/1.0"  # User agent for web requests
+  timeout: 10                      # Request timeout in seconds
+  max_content_length: 1000000      # Maximum content length in bytes (1MB)
+  follow_redirects: true           # Follow HTTP redirects
+  extract_images: false            # Don't extract images by default
+  respect_robots_txt: true         # Respect robots.txt directives
+
+# Security settings
+security:
+  encryption_enabled: true         # Enable data encryption
+  encryption_algorithm: "AES-256-GCM" # Encryption algorithm
+  key_derivation: "PBKDF2"         # Key derivation method
+  iterations: 100000               # Key derivation iterations
+  auth_required: false             # No additional auth by default (relies on OS)
+  auth_method: "device"            # Use device authentication
+  pin_protection: false            # PIN protection disabled by default
+  biometric_protection: false      # Biometric protection disabled by default
+
+# Performance settings
+performance:
+  max_cpu_percent: 70              # Maximum CPU usage percentage
+  max_memory_percent: 70           # Maximum memory usage percentage
+  background_processing: true       # Enable background processing
+  cache_size_mb: 100               # Cache size in MB
+  vector_cache_size: 1000          # Number of vectors to cache
+  response_cache_ttl: 300          # Response cache time-to-live (seconds)
+
+# UI settings
+ui:
+  theme: "system"                  # UI theme (system, light, dark)
+  accent_color: "blue"             # UI accent color
+  font_size: "medium"              # Font size (small, medium, large)
+  animations_enabled: true         # Enable UI animations
+  notifications_enabled: true      # Enable notifications
+  sound_effects: false             # Sound effects disabled by default
