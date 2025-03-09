@@ -1,0 +1,131 @@
+version: 2
+updates:
+  # Python dependencies for backend
+  - package-ecosystem: "pip"
+    directory: "/src/backend/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "python"
+      - "backend"
+    assignees:
+      - "backend-team"
+    reviewers:
+      - "lead-developer"
+    commit-message:
+      prefix: "deps(backend)"
+      include: "scope"
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "fastapi"
+        versions: [">=1.0.0"]
+    allow:
+      - dependency-type: "direct"
+    versioning-strategy: "auto"
+
+  # npm dependencies for web frontend
+  - package-ecosystem: "npm"
+    directory: "/src/web/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "frontend"
+    assignees:
+      - "frontend-team"
+    reviewers:
+      - "lead-developer"
+    commit-message:
+      prefix: "deps(web)"
+      include: "scope"
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "next"
+        versions: [">=15.0.0"]
+    allow:
+      - dependency-type: "direct"
+    versioning-strategy: "auto"
+
+  # npm dependencies for Electron desktop app
+  - package-ecosystem: "npm"
+    directory: "/src/web/electron/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "desktop"
+    assignees:
+      - "frontend-team"
+    reviewers:
+      - "lead-developer"
+    commit-message:
+      prefix: "deps(electron)"
+      include: "scope"
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "electron"
+        versions: [">=28.0.0"]
+    allow:
+      - dependency-type: "direct"
+    versioning-strategy: "auto"
+
+  # npm dependencies for React Native mobile app
+  - package-ecosystem: "npm"
+    directory: "/src/web/react-native/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "mobile"
+    assignees:
+      - "mobile-team"
+    reviewers:
+      - "lead-developer"
+    commit-message:
+      prefix: "deps(mobile)"
+      include: "scope"
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "react-native"
+        versions: [">=0.73.0"]
+    allow:
+      - dependency-type: "direct"
+    versioning-strategy: "auto"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci"
+    assignees:
+      - "devops-team"
+    reviewers:
+      - "lead-developer"
+    commit-message:
+      prefix: "deps(ci)"
+      include: "scope"
+    open-pull-requests-limit: 3
+    versioning-strategy: "auto"
