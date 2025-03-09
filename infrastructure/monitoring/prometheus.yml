@@ -1,0 +1,52 @@
+# Prometheus configuration for Personal AI Agent monitoring
+# This file defines monitoring settings for collecting metrics from various components
+
+global:
+  # Default interval at which targets are scraped
+  scrape_interval: 15s
+  # Default interval at which alerting rules are evaluated
+  evaluation_interval: 15s
+  # Default timeout for scrape requests
+  scrape_timeout: 10s
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # Alert manager endpoint
+          - localhost:9093
+
+# Rule files containing alerting and recording rules
+rule_files:
+  - "rules/personal_ai_agent_alerts.yml"
+  - "rules/personal_ai_agent_recording_rules.yml"
+
+# Scrape configurations for targets
+scrape_configs:
+  # Scrape Prometheus's own metrics
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Scrape metrics from the Personal AI Agent application
+  - job_name: 'personal-ai-agent'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['localhost:8000']
+        labels:
+          service: 'personal-ai-agent'
+          environment: 'local'
+
+  # Scrape system metrics from node_exporter
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+
+# Storage configuration
+storage:
+  tsdb:
+    # Local storage configuration for time series database
+    path: 'data/prometheus'
+    retention_time: '15d'
