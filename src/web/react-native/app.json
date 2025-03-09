@@ -1,0 +1,73 @@
+{
+  "expo": {
+    "name": "Personal AI Agent",
+    "slug": "personal-ai-agent",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./public/images/app-icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./public/images/app-icon-512.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff",
+      "dark": {
+        "backgroundColor": "#121212"
+      }
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.personalai.agent",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app uses the microphone for voice interactions with your AI assistant.",
+        "NSDocumentsFolderUsageDescription": "This app needs access to documents for processing and storing in your personal memory.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      },
+      "requireFullScreen": true,
+      "minimalOSVersion": "14.0"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./public/images/app-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.personalai.agent",
+      "versionCode": 1,
+      "permissions": [
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "minSdkVersion": 29
+    },
+    "web": {
+      "favicon": "./public/favicon.ico"
+    },
+    "plugins": [
+      "expo-document-picker",
+      "expo-file-system",
+      "expo-secure-store",
+      "expo-sqlite",
+      "expo-av"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "personal-ai-agent"
+      }
+    },
+    "privacy": "unlisted",
+    "description": "A local-first, memory-augmented AI companion that prioritizes user privacy while delivering personalized support through text and voice interactions.",
+    "githubUrl": "https://github.com/personal-ai-agent/personal-ai-agent",
+    "primaryColor": "#4F46E5",
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "enabled": true
+    },
+    "jsEngine": "hermes"
+  }
+}
